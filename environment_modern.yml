@@ -1,0 +1,30 @@
+name: rapppid_modern
+channels:
+  - defaults
+  - conda-forge
+  - pytorch
+  - nvidia
+dependencies:
+  - python=3.10
+  - pytorch::pytorch>=2.5.0
+  - pytorch::torchvision
+  - pytorch::torchaudio
+  - pytorch::pytorch-cuda=12.4
+  - cudatoolkit
+  - pip
+  - pip:
+    - pytorch-lightning>=2.4.0
+    - sentencepiece
+    - fire
+    - matplotlib
+    - numpy
+    - scikit-learn
+    - scipy
+    - pandas
+    - tqdm
+    - passlib
+    - tensorboard
+    - torchmetrics
+    - pyyaml
+    - tables
+    - git+https://github.com/lessw2020/Ranger21.git

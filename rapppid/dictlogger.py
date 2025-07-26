@@ -1,10 +1,9 @@
 from pytorch_lightning.utilities import rank_zero_only
-from pytorch_lightning.loggers import LightningLoggerBase
-from pytorch_lightning.loggers.base import rank_zero_experiment
+from pytorch_lightning.loggers.logger import Logger
 from collections import defaultdict 
 
 
-class DictLogger(LightningLoggerBase):
+class DictLogger(Logger):
 
     def __init__(self):
         super().__init__()
@@ -20,7 +19,6 @@ class DictLogger(LightningLoggerBase):
         return 'DictLogger'
 
     @property
-    @rank_zero_experiment
     def experiment(self):
         # Return the experiment object associated with this logger.
         pass

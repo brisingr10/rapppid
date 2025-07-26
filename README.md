@@ -18,15 +18,68 @@ See [docs/data.md](docs/data.md) for information about downloading data from the
 ### Infering
 See [docs/infer.md](docs/infer.md) for advice on how to use RAPPPID for infering protein interaction probabilities.
 
-## Environment/Requirments
+## Environment/Requirements
 
-The conda environment file (`environment.yml`) is available in the root of this
-repository. This lists all the python libraries and the versions used for 
-running RAPPPID.
+### Setup Environment
 
-Alternatively, there's a `requirements.txt` file if you prefer to use PIP.
+For all NVIDIA GPUs with CUDA support, use the modern environment:
 
-You'll need an NVIDIA GPU which is CUDA compatible. RAPPPID was tested on RTX 2080, V100, and A100 GPUs.
+```bash
+conda env create -f environment_modern.yml
+conda activate rapppid_modern
+```
+
+**GPU Requirements:**
+- NVIDIA GPU with CUDA support
+- Compatible with RTX 20/30/40/50 series and datacenter GPUs
+- Tested on RTX 2080, V100, A100, and RTX 5070 Ti
+
+## Quick Start Training
+
+### 1. Set up Environment
+```bash
+# Set up the environment
+conda env create -f environment_modern.yml
+conda activate rapppid_modern
+
+# Navigate to training directory
+cd rapppid/
+```
+
+### 2. Start Training
+**Zero-configuration training (uses intelligent defaults):**
+```bash
+python train.py
+```
+
+**Custom parameters:**
+```bash
+python train.py --c_type 2 --batch_size 64 --num_epochs 50
+```
+
+**All available parameters:**
+```bash
+python train.py --help
+```
+
+### 3. What Happens Automatically
+**Intelligent Path Detection:**
+- ✅ **Data**: Auto-detects `../data/rapppid data/comparatives/string_c{1,2,3}/`
+- ✅ **Model**: Auto-finds `smp250.model` and `smp250.vocab`  
+- ✅ **Logs**: Auto-creates and uses `logs/` directory
+- ✅ **Parameters**: Uses research paper defaults for all hyperparameters
+
+### 4. Monitor Training
+- Logs and checkpoints are saved to `logs/` directory
+- View tensorboard: `tensorboard --logdir logs/tb_logs`
+- Model metrics are in `logs/args/[model_name].json`
+
+### 5. Available Datasets
+- **String C1**: Dataset 1 (default) - use `--c_type 1`
+- **String C2**: Dataset 2 - use `--c_type 2`  
+- **String C3**: Dataset 3 - use `--c_type 3`
+
+**No manual configuration needed** - everything is auto-detected from your current directory structure!
 
 
 ## License

@@ -229,18 +229,20 @@ class RapppidDataModule(pl.LightningDataModule):
         self.seqs = []
 
     def setup(self, stage=None):
+        
+        def load_pickle_file(path):
+            """Load pickle file, handling both gzipped and regular pickle files"""
+            try:
+                with gzip.open(path) as f:
+                    return pickle.load(f)
+            except gzip.BadGzipFile:
+                with open(path, 'rb') as f:
+                    return pickle.load(f)
 
-        with gzip.open(self.seqs_path) as f:
-            self.seqs = pickle.load(f)
-
-        with gzip.open(self.test_path) as f:
-            self.test_pairs = pickle.load(f)
-
-        with gzip.open(self.val_path) as f:
-            self.val_pairs = pickle.load(f)  
-
-        with gzip.open(self.train_path) as f:
-            self.train_pairs = pickle.load(f)  
+        self.seqs = load_pickle_file(self.seqs_path)
+        self.test_pairs = load_pickle_file(self.test_path)
+        self.val_pairs = load_pickle_file(self.val_path)
+        self.train_pairs = load_pickle_file(self.train_path)  
 
         self.dataset_train = RapppidDataset(self.train_pairs, self.seqs, self.model_file, self.trunc_len, self.vocab_size)
         self.dataset_val = RapppidDataset(self.val_pairs, self.seqs, self.model_file, self.trunc_len, self.vocab_size)

@@ -4,6 +4,7 @@ import json
 import os
 import sys
 from typing import Optional
+from pathlib import Path as PathLib
 
 import matplotlib.pyplot as plt
 
@@ -18,7 +19,10 @@ from torch import nn
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger
-from pytorch_lightning.utilities import seed as pl_seed
+try:
+    from pytorch_lightning.utilities.seed import seed_everything as pl_seed_everything
+except ImportError:
+    from lightning_fabric.utilities.seed import seed_everything as pl_seed_everything
 
 from ranger21 import Ranger21
 from dictlogger import DictLogger
@@ -314,12 +318,12 @@ class LSTMAWD(pl.LightningModule):
         self.log('train_acc', acc, on_step=False, on_epoch=True)
 
         if batch_idx == 0:
-            self.logger.experiment[0].add_pr_curve('train_pr', y, torch.sigmoid(y_hat), self.current_epoch)
+            self.logger.experiment.add_pr_curve('train_pr', y, torch.sigmoid(y_hat), self.current_epoch)
             if len(y_hat_probs[y_np == 1]) > 0:
-                self.logger.experiment[0].add_histogram('train_pos', y_hat_probs[y_np == 1], self.current_epoch)
+                self.logger.experiment.add_histogram('train_pos', y_hat_probs[y_np == 1], self.current_epoch)
                 
             if len(y_hat_probs[y_np == 0]) > 0:
-                self.logger.experiment[0].add_histogram('train_neg', y_hat_probs[y_np == 0], self.current_epoch)
+                self.logger.experiment.add_histogram('train_neg', y_hat_probs[y_np == 0], self.current_epoch)
 
         self.log('train_loss', loss, on_step=False, on_epoch=True)
         # When we manually optimise, we lose the loss in the progress bar
@@ -406,13 +410,13 @@ class LSTMAWD(pl.LightningModule):
         self.log('val_acc', acc, prog_bar=True)
 
         if batch_idx == 0:
-            self.logger.experiment[0].add_pr_curve('val_pr', y, torch.sigmoid(y_hat), self.current_epoch)
+            self.logger.experiment.add_pr_curve('val_pr', y, torch.sigmoid(y_hat), self.current_epoch)
 
             if len(y_hat_probs[y_np == 1]) > 0:
-                self.logger.experiment[0].add_histogram('val_pos', y_hat_probs[y_np == 1], self.current_epoch)
+                self.logger.experiment.add_histogram('val_pos', y_hat_probs[y_np == 1], self.current_epoch)
 
             if len(y_hat_probs[y_np == 0]) > 0:
-                self.logger.experiment[0].add_histogram('val_neg', y_hat_probs[y_np == 0], self.current_epoch)
+                self.logger.experiment.add_histogram('val_neg', y_hat_probs[y_np == 0], self.current_epoch)
 
         self.log('val_loss', loss, prog_bar=True)
 
@@ -472,13 +476,13 @@ class LSTMAWD(pl.LightningModule):
         self.log('test_acc', acc, prog_bar=True)
 
         if batch_idx == 0:
-            self.logger.experiment[0].add_pr_curve('test_pr', y, torch.sigmoid(y_hat), self.current_epoch)
+            self.logger.experiment.add_pr_curve('test_pr', y, torch.sigmoid(y_hat), self.current_epoch)
 
             if len(y_hat_probs[y_np == 1]) > 0:
-                self.logger.experiment[0].add_histogram('test_pos', y_hat_probs[y_np == 1], self.current_epoch)
+                self.logger.experiment.add_histogram('test_pos', y_hat_probs[y_np == 1], self.current_epoch)
 
             if len(y_hat_probs[y_np == 0]) > 0:
-                self.logger.experiment[0].add_histogram('test_neg', y_hat_probs[y_np == 0], self.current_epoch)
+                self.logger.experiment.add_histogram('test_neg', y_hat_probs[y_np == 0], self.current_epoch)
 
         self.log('test_loss', loss, prog_bar=True)
 
@@ -504,9 +508,9 @@ class LSTMAWD(pl.LightningModule):
     def on_after_backward(self):
         global_step = self.global_step
         for name, param in self.named_parameters():
-            self.logger.experiment[0].add_histogram(name, param, global_step)
+            self.logger.experiment.add_histogram(name, param, global_step)
             if param.requires_grad:
-                self.logger.experiment[0].add_histogram(f"{name}_grad", param.grad, global_step)
+                self.logger.experiment.add_histogram(f"{name}_grad", param.grad, global_step)
     """
 
 
@@ -517,28 +521,125 @@ def _getThreads():
         else:
             return (int)(os.popen('grep -c cores /proc/cpuinfo').read())
 
-def main(batch_size: int, trunc_len: int,
-            embedding_size: int, num_epochs: int, lstm_dropout_rate: float, classhead_dropout_rate: float,
-            rnn_num_layers: int, classhead_num_layers: int, lr: float,  weight_decay: float, bi_reduce: str,
-            class_head_name: str, variational_dropout: bool, lr_scaling: bool, model_file: Path, log_path: Path = 'logs',
+def _detect_paths():
+    """Auto-detect data and model paths relative to current working directory"""
+    current_dir = PathLib.cwd()
+    
+    # Look for data directory
+    data_paths = [
+        current_dir / "../data/rapppid data/comparatives",
+        current_dir / "../data/rapppid/comparatives", 
+        current_dir / "data/rapppid data/comparatives",
+        current_dir / "data/rapppid/comparatives",
+        current_dir.parent / "data/rapppid data/comparatives",
+        current_dir.parent / "data/rapppid/comparatives"
+    ]
+    
+    data_base_path = None
+    for path in data_paths:
+        if path.exists():
+            data_base_path = str(path)
+            break
+    
+    # Look for SentencePiece model
+    model_paths = [
+        current_dir / "smp250.model",
+        current_dir / "../smp250.model",
+        current_dir.parent / "smp250.model"
+    ]
+    
+    model_file = "smp250.model"  # default
+    for path in model_paths:
+        if path.exists():
+            model_file = str(path)
+            break
+    
+    # Create logs directory if it doesn't exist
+    log_path = current_dir / "logs"
+    log_path.mkdir(exist_ok=True)
+    
+    return data_base_path, model_file, str(log_path)
+
+def main(batch_size: int = 80, trunc_len: int = 1500,
+            embedding_size: int = 64, num_epochs: int = 100, lstm_dropout_rate: float = 0.3, classhead_dropout_rate: float = 0.2,
+            rnn_num_layers: int = 2, classhead_num_layers: int = 2, lr: float = 0.001,  weight_decay: float = 0.01, bi_reduce: str = 'concat',
+            class_head_name: str = 'concat', variational_dropout: bool = False, lr_scaling: bool = False, model_file: Path = None, log_path: Path = None,
             vocab_size: int = 250, embedding_droprate: float = 0.2, transfer_path: Optional[str] = None,
             frozen_epochs: int = 0, optimizer_type: str = 'ranger21', swa: bool = True, seed: int = 5353456,
-            c_type: Optional[int] = None, train_path: Optional[Path] = None, 
+            c_type: Optional[int] = 1, train_path: Optional[Path] = None, 
             val_path: Optional[Path] = None, test_path: Optional[Path] = None, seqs_path: Optional[Path] = None, 
             dataset_path: Optional[Path] = None):
 
-    pl_seed.seed_everything(seed, workers=True)
+    print("🚀 Starting RAPPPID Training")
+    print("=" * 50)
+    
+    pl_seed_everything(seed, workers=True)
+    
+    # Auto-detect paths if not provided
+    detected_data_base, detected_model, detected_logs = _detect_paths()
+    
+    if model_file is None:
+        model_file = detected_model
+        print(f'✅ Auto-detected SentencePiece model: {model_file}')
+    
+    if log_path is None:
+        log_path = detected_logs
+        print(f'✅ Auto-detected log path: {log_path}')
 
     threads = max(1, _getThreads()-2)
     #threads = 4
     print(f'Using {threads} workers')
 
+    # Set default dataset path if none provided
     if (val_path is None or test_path is None or seqs_path is None) and dataset_path is None:
-        raise ValueError('Either provide a "dataset_path" or all three of "val_path", "test_path", and "train_path"')
+        if c_type is not None and detected_data_base is not None:
+            # First check if HDF5 format exists
+            hdf5_path = f'{detected_data_base}/string_c{c_type}'
+            pkl_path = f'{detected_data_base}/string_c{c_type}'
+            
+            # Check if the path contains actual HDF5 files or pickle files
+            import os
+            hdf5_exists = os.path.exists(hdf5_path) and any(
+                f.endswith(('.h5', '.hdf5')) for f in os.listdir(hdf5_path) if os.path.isfile(os.path.join(hdf5_path, f))
+            ) if os.path.exists(hdf5_path) else False
+            
+            pkl_exists = os.path.exists(pkl_path) and any(
+                'pkl' in item for item in os.listdir(pkl_path)
+            ) if os.path.exists(pkl_path) else False
+            
+            if hdf5_exists:
+                dataset_path = hdf5_path
+                print(f'✅ Auto-detected HDF5 dataset path: {dataset_path}')
+            elif pkl_exists:
+                # Use the original dataset format with pickle files
+                dataset_path = None  # Force using individual pickle files
+                if detected_data_base:
+                    # Set individual pickle file paths
+                    base_path = f'{detected_data_base}/string_c{c_type}'
+                    train_path = f'{base_path}/train_pairs.pkl/train_pairs.pkl'
+                    val_path = f'{base_path}/val_pairs.pkl/val_pairs.pkl'
+                    test_path = f'{base_path}/test_pairs.pkl/test_pairs.pkl'
+                    seqs_path = f'{base_path}/seqs.pkl/seqs.pkl'
+                    print(f'✅ Auto-detected pickle dataset files: {base_path}')
+            else:
+                dataset_path = f'{detected_data_base}/string_c{c_type}'
+                print(f'✅ Auto-detected dataset path: {dataset_path}')
+        elif c_type is not None:
+            # Fallback to relative path if auto-detection failed
+            dataset_path = f'../data/rapppid data/comparatives/string_c{c_type}'
+            print(f'⚠️  Using fallback dataset path: {dataset_path}')
+        else:
+            if detected_data_base:
+                print(f'Available data directories found at: {detected_data_base}')
+                print('Available datasets: string_c1, string_c2, string_c3')
+                print('Please specify --c_type 1, 2, or 3 to select a dataset')
+            raise ValueError('Either provide a "dataset_path" or all three of "val_path", "test_path", and "train_path", or set c_type for default dataset')
 
     if dataset_path is not None:
         if c_type is None:
-            print('If "dataset_path" is specified, so must "c_type"')
+            raise ValueError('If "dataset_path" is specified, so must "c_type" (1, 2, or 3)')
+        if c_type not in [1, 2, 3]:
+            raise ValueError('c_type must be 1, 2, or 3')
         print('Using RAPPPID V2 Dataset format.')
 
         data_module = RapppidDataModule2(batch_size, dataset_path, c_type, trunc_len, threads, vocab_size,
@@ -615,10 +716,21 @@ def main(batch_size: int, trunc_len: int,
         #csv_logger = CSVLogger("logs/tb_logs", name='lstm_weightdropout', version=model_name)
         checkpoint_callback = ModelCheckpoint(f"{log_path}/chkpts/", monitor='val_loss', filename=model_name)
         #checkpoint_callback = ModelCheckpoint(f"{log_path}/chkpts/", monitor='val_auroc', filename=model_name)
-        trainer = pl.Trainer(gpus=1, stochastic_weight_avg=swa, max_epochs=num_epochs, logger=[tb_logger, dict_logger], precision=16, callbacks=[checkpoint_callback])
+        # Create callbacks list
+        callbacks = [checkpoint_callback]
+        if swa:
+            from pytorch_lightning.callbacks import StochasticWeightAveraging
+            callbacks.append(StochasticWeightAveraging(swa_lrs=1e-2))
+        
+        trainer = pl.Trainer(accelerator="gpu", devices=1, enable_checkpointing=True, max_epochs=num_epochs, logger=[tb_logger, dict_logger], precision="16-mixed", callbacks=callbacks)
         trainer.fit(model, data_module)
+        training_completed = True
     except KeyboardInterrupt:
         print('Interrupted!')
+        training_completed = False
+    except Exception as e:
+        print(f'Training failed: {e}')
+        training_completed = False
     finally:
         metrics = {k: dict_logger.metrics[k] for k in dict_logger.metrics}
 
@@ -630,7 +742,13 @@ def main(batch_size: int, trunc_len: int,
                 'metrics': metrics,
             }, f, indent=3)
      
-        model = LSTMAWD.load_from_checkpoint(f'{log_path}/chkpts/{model_name}.ckpt').eval().to('cuda')
+        # Only try to load checkpoint if training completed successfully
+        checkpoint_path = f'{log_path}/chkpts/{model_name}.ckpt'
+        if training_completed and os.path.exists(checkpoint_path):
+            model = LSTMAWD.load_from_checkpoint(checkpoint_path).eval().to('cuda')
+        else:
+            print(f'Checkpoint not found or training incomplete, skipping evaluation: {checkpoint_path}')
+            return
 
         test_outs = []
         test_ys = []
